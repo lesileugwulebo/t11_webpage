@@ -2,8 +2,8 @@
 // User Login Page Component
 // ==========================================================================
 function UserLogin({ setView }) {
-  const [username, setUsername] = React.useState('user');
-  const [password, setPassword] = React.useState('user123');
+  const [username, setUsername] = React.useState('');
+  const [password, setPassword] = React.useState('');
   const [loading, setLoading] = React.useState(false);
   const { loginUser } = window.useAuth();
   const { addToast } = window.useToast();
@@ -60,7 +60,7 @@ function UserLogin({ setView }) {
             <input 
               type="text" 
               className="form-control" 
-              placeholder="e.g. user" 
+              placeholder="e.g. username" 
               value={username} 
               onChange={(e) => setUsername(e.target.value)} 
               required 
@@ -119,20 +119,6 @@ function UserLogin({ setView }) {
             </svg>
             Sign in with Microsoft Entra ID
           </button>
-        </div>
-
-        {/* Demo Fast-Fill */}
-        <div style={{ marginTop: '1.25rem', padding: '0.875rem', background: '#f8fafc', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.4rem', fontWeight: 700 }}>DEMO CREDENTIALS:</div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <code style={{ fontSize: '0.85rem', color: '#0284c7', fontWeight: 600 }}>user / user123</code>
-            <button 
-              type="button" 
-              className="btn btn-secondary btn-sm" 
-              onClick={() => { setUsername('user'); setPassword('user123'); }}>
-              Auto-Fill
-            </button>
-          </div>
         </div>
 
         {/* Switch Link */}

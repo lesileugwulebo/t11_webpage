@@ -2,8 +2,8 @@
 // Admin Login Page Component
 // ==========================================================================
 function AdminLogin({ setView }) {
-  const [username, setUsername] = React.useState('admin');
-  const [password, setPassword] = React.useState('admin123');
+  const [username, setUsername] = React.useState('');
+  const [password, setPassword] = React.useState('');
   const [loading, setLoading] = React.useState(false);
   const { loginUser } = window.useAuth();
   const { addToast } = window.useToast();
@@ -122,20 +122,6 @@ function AdminLogin({ setView }) {
             </svg>
             Sign in with Microsoft Entra ID
           </button>
-        </div>
-
-        {/* Demo Fast-Fill */}
-        <div style={{ marginTop: '1.25rem', padding: '0.875rem', background: '#f8fafc', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.4rem', fontWeight: 700 }}>ADMIN CREDENTIALS:</div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <code style={{ fontSize: '0.85rem', color: '#6d28d9', fontWeight: 600 }}>admin / admin123</code>
-            <button 
-              type="button" 
-              className="btn btn-secondary btn-sm" 
-              onClick={() => { setUsername('admin'); setPassword('admin123'); }}>
-              Auto-Fill
-            </button>
-          </div>
         </div>
 
         {/* Switch Link */}
