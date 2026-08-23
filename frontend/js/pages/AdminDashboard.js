@@ -1,0 +1,291 @@
+// ==========================================================================
+// Admin Dashboard Component
+// ==========================================================================
+function AdminDashboard() {
+  const { user } = window.useAuth();
+  const { addToast } = window.useToast();
+
+  const [activeTab, setActiveTab] = React.useState('inventory'); // 'inventory', 'users', 'logs'
+  const [stats, setStats] = React.useState({
+    totalItems: 0,
+    totalUnits: 0,
+    totalValuation: 0,
+    lowStockCount: 0,
+    todayTransactions: 0
+  });
+
+  const [items, setItems] = React.useState([]);
+  const [users, setUsers] = React.useState([]);
+  const [logs, setLogs] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+
+  // Modals state
+  const [isCreateItemOpen, setIsCreateItemOpen] = React.useState(false);
+  const [isCreateUserOpen, setIsCreateUserOpen] = React.useState(false);
+  const [restockItem, setRestockItem] = React.useState(null);
+  const [adjustItem, setAdjustItem] = React.useState(null);
+
+  const fetchAllData = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const [statsRes, invRes, logsRes] = await Promise.all([
+        window.api.getStats(),
+        window.api.getInventory(),
+        window.api.getAllActivity(50, 0)
+      ]);
+
+      setStats(statsRes);
+      setItems(invRes.items || []);
+      setLogs(logsRes.logs || []);
+
+      if (activeTab === 'users') {
+        const usersRes = await window.api.getUsers();
+        setUsers(usersRes.users || []);
+      }
+    } catch (err) {
+      addToast(err.message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [activeTab, addToast]);
+
+  React.useEffect(() => {
+    fetchAllData();
+  }, [fetchAllData]);
+
+  const handleTabChange = async (tab) => {
+    setActiveTab(tab);
+    if (tab === 'users') {
+      try {
+        const res = await window.api.getUsers();
+        setUsers(res.users || []);
+      } catch (err) {
+        addToast(err.message, 'error');
+      }
+    }
+  };
+
+  const handleDeleteItem = async (item) => {
+    if (!window.confirm(`Are you sure you want to delete "${item.name}" (${item.sku})? This will also remove remaining ${item.quantity} units from inventory.`)) {
+      return;
+    }
+
+    try {
+      await window.api.deleteItem(item.id);
+      addToast(`Item "${item.name}" deleted successfully`, 'success');
+      fetchAllData();
+    } catch (err) {
+      addToast(err.message, 'error');
+    }
+  };
+
+  const handleToggleUserStatus = async (targetUser) => {
+    const nextStatus = targetUser.status === 'active' ? 'inactive' : 'active';
+    try {
+      await window.api.toggleUserStatus(targetUser.id, nextStatus);
+      addToast(`User ${targetUser.username} set to ${nextStatus}`, 'success');
+      const res = await window.api.getUsers();
+      setUsers(res.users || []);
+    } catch (err) {
+      addToast(err.message, 'error');
+    }
+  };
+
+  return (
+    <div className="main-content">
+      {/* Top Banner */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.75rem', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <h1 style={{ fontSize: '1.75rem' }}>Administrator Dashboard</h1>
+            <span className="role-pill admin">Admin Mode</span>
+          </div>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.2rem' }}>
+            Full control over catalog stock, user accounts, and system-wide inventory audit trails.
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <button className="btn btn-admin" onClick={() => setIsCreateUserOpen(true)}>
+            👤 Create New User
+          </button>
+          <button className="btn btn-primary" onClick={() => setIsCreateItemOpen(true)}>
+            ✨ Add New Item
+          </button>
+        </div>
+      </div>
+
+      {/* Stats Cards Grid */}
+      <div className="grid-4" style={{ marginBottom: '2rem' }}>
+        <window.StatsCard 
+          title="Total Stock Items" 
+          value={stats.totalItems} 
+          sub={`${stats.totalUnits} total units in storage`}
+          icon="📦" 
+          variant="primary" 
+        />
+        <window.StatsCard 
+          title="Total Valuation" 
+          value={`₦${stats.totalValuation.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} 
+          sub="Estimated inventory cost"
+          icon="💎" 
+          variant="success" 
+        />
+        <window.StatsCard 
+          title="Low Stock Alerts" 
+          value={stats.lowStockCount} 
+          sub="Items below threshold"
+          icon="⚠️" 
+          variant={stats.lowStockCount > 0 ? "warning" : "primary"} 
+        />
+        <window.StatsCard 
+          title="Today's Activity" 
+          value={stats.todayTransactions} 
+          sub="Global stock actions today"
+          icon="⚡" 
+          variant="info" 
+        />
+      </div>
+
+      {/* Tabs */}
+      <div className="tabs-container">
+        <button 
+          className={`tab-btn ${activeTab === 'inventory' ? 'active' : ''}`}
+          onClick={() => handleTabChange('inventory')}>
+          📦 Inventory Management ({items.length})
+        </button>
+        <button 
+          className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`}
+          onClick={() => handleTabChange('users')}>
+          👥 User Accounts Management
+        </button>
+        <button 
+          className={`tab-btn ${activeTab === 'logs' ? 'active' : ''}`}
+          onClick={() => handleTabChange('logs')}>
+          📜 System Audit Trail ({logs.length})
+        </button>
+      </div>
+
+      {/* Tab Contents */}
+      {activeTab === 'inventory' && (
+        <div className="card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h3 style={{ fontSize: '1.15rem' }}>Current Stock Inventory</h3>
+            <button className="btn btn-primary btn-sm" onClick={() => setIsCreateItemOpen(true)}>
+              + Register New Product
+            </button>
+          </div>
+
+          <window.InventoryTable 
+            items={items}
+            loading={loading}
+            onRestock={(item) => setRestockItem(item)}
+            onAdjust={(item) => setAdjustItem(item)}
+            onDelete={handleDeleteItem}
+            onRefresh={fetchAllData}
+            isAdmin={true}
+          />
+        </div>
+      )}
+
+      {activeTab === 'users' && (
+        <div className="card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+            <div>
+              <h3 style={{ fontSize: '1.15rem' }}>System Users & Roles</h3>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Manage staff credentials and access permissions</p>
+            </div>
+            <button className="btn btn-admin btn-sm" onClick={() => setIsCreateUserOpen(true)}>
+              + Create New User
+            </button>
+          </div>
+
+          <div className="table-responsive">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Full Name</th>
+                  <th>Username</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th style={{ textAlign: 'right' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map(u => (
+                  <tr key={u.id}>
+                    <td>#{u.id}</td>
+                    <td><strong style={{ color: '#fff' }}>{u.full_name}</strong></td>
+                    <td><code>{u.username}</code></td>
+                    <td>{u.email}</td>
+                    <td>
+                      <span className={`role-pill ${u.role}`}>{u.role}</span>
+                    </td>
+                    <td>
+                      <span className={`badge ${u.status === 'active' ? 'in-stock' : 'out-of-stock'}`}>
+                        {u.status === 'active' ? '● Active' : '○ Deactivated'}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      {u.id !== user.id ? (
+                        <button 
+                          className={`btn btn-sm ${u.status === 'active' ? 'btn-outline-danger' : 'btn-success'}`}
+                          onClick={() => handleToggleUserStatus(u)}>
+                          {u.status === 'active' ? 'Deactivate' : 'Activate'}
+                        </button>
+                      ) : (
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>Current User</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'logs' && (
+        <div className="card">
+          <div style={{ marginBottom: '1.25rem' }}>
+            <h3 style={{ fontSize: '1.15rem' }}>Global Stock Audit Log</h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Complete chronological log of all creations, restocks, and deductions</p>
+          </div>
+
+          <window.ActivityFeed logs={logs} emptyMessage="No transactions in the audit log yet." />
+        </div>
+      )}
+
+      {/* Modals */}
+      <window.CreateItemModal 
+        isOpen={isCreateItemOpen} 
+        onClose={() => setIsCreateItemOpen(false)} 
+        onSuccess={fetchAllData} 
+      />
+
+      <window.CreateUserModal 
+        isOpen={isCreateUserOpen} 
+        onClose={() => setIsCreateUserOpen(false)} 
+        onSuccess={fetchAllData} 
+      />
+
+      <window.RestockModal 
+        isOpen={!!restockItem} 
+        item={restockItem} 
+        onClose={() => setRestockItem(null)} 
+        onSuccess={fetchAllData} 
+      />
+
+      <window.AdjustStockModal 
+        isOpen={!!adjustItem} 
+        item={adjustItem} 
+        onClose={() => setAdjustItem(null)} 
+        onSuccess={fetchAllData} 
+      />
+    </div>
+  );
+}
+
+window.AdminDashboard = AdminDashboard;

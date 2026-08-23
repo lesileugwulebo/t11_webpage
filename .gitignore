@@ -1,0 +1,19 @@
+# Logs & Runtime
+*.log
+__pycache__/
+*.pyc
+
+# Environment files
+.env
+.env.local
+
+# Node modules
+node_modules/
+
+# Local databases (optional - keep or ignore based on user preference)
+*.sqlite3
+*.db-journal
+
+# OS files
+.DS_Store
+Thumbs.db

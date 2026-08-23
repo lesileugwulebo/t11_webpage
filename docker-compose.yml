@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  # MySQL Database Service
+  mysql_db:
+    image: mysql:8.0
+    container_name: verdad_mysql_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password_123
+      MYSQL_DATABASE: inventory_db
+      MYSQL_USER: inventory_user
+      MYSQL_PASSWORD: inventory_pass_123
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./backend/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot_password_123"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Verdad Solution InventoryApp Web & API Server
+  inventory_app:
+    build: .
+    container_name: verdad_inventory_app
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - DB_HOST=mysql_db
+      - DB_USER=inventory_user
+      - DB_PASSWORD=inventory_pass_123
+      - DB_NAME=inventory_db
+      - DB_PORT=3306
+    depends_on:
+      mysql_db:
+        condition: service_healthy
+    volumes:
+      - app_data:/app
+
+volumes:
+  mysql_data:
+  app_data:
