@@ -30,6 +30,12 @@ A full-stack Inventory Management Application built with **React** on the fronte
 | **Staff User** | `user` | `user123` | User Dashboard ("Today's Work") |
 | **Staff User 2** | `sarah_tech` | `user123` | User Dashboard ("Today's Work") |
 
+## 📖 Deployment Guides
+
+- 🖥️ **[Manual Linux Multi-Server Deployment (No AWS/Docker/Terraform)](./MANUAL_DEPLOYMENT_GUIDE.md)** - Step-by-step walkthrough for 2 separate Linux servers (Server A = Nginx/App + Server B = MySQL DB).
+- ☁️ **[AWS 2-Tier EC2 Deployment Guide](./AWS_DEPLOYMENT_GUIDE.md)** - AWS EC2 deployment with Security Groups and Terraform.
+- 🐧 **[Automated Native Linux Deployment](./LINUX_DEPLOYMENT.md)** - 1-command installer script and systemd setup.
+
 ---
 
 ## 🚀 How to Run the Application
