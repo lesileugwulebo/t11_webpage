@@ -20,12 +20,15 @@
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <!-- Babel Standalone for JSX transformation in browser -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Microsoft Entra ID (MSAL.js) for Single Sign-On -->
+  <script src="https://alcdn.msauth.net/browser/2.35.0/js/msal-browser.min.js"></script>
 </head>
 <body>
   <div id="root"></div>
 
   <!-- Application Scripts -->
   <script src="/js/api.js"></script>
+  <script src="/js/entraAuth.js"></script>
   
   <script type="text/babel" src="/js/components/Toast.js"></script>
   <script type="text/babel" src="/js/authContext.js"></script>

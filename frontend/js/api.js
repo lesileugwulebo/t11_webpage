@@ -47,6 +47,11 @@ const api = {
     body: JSON.stringify({ username, password })
   }),
 
+  loginEntraSSO: (payload) => request('/auth/entra-sso', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  }),
+
   getProfile: () => request('/auth/me'),
 
   // Inventory
@@ -78,6 +83,27 @@ const api = {
 
   deleteItem: (id) => request(`/inventory/${id}`, {
     method: 'DELETE'
+  }),
+
+  // Tickets & IT Support Requisitions
+  getTickets: (params = {}) => {
+    const query = new URLSearchParams();
+    if (params.status) query.append('status', params.status);
+    if (params.type) query.append('type', params.type);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    return request(`/tickets${qs}`);
+  },
+
+  getTicketStats: () => request('/tickets/stats'),
+
+  createTicket: (ticketData) => request('/tickets', {
+    method: 'POST',
+    body: JSON.stringify(ticketData)
+  }),
+
+  updateTicketStatus: (id, { status, admin_notes, deduct_stock }) => request(`/tickets/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status, admin_notes, deduct_stock })
   }),
 
   // Users (Admin Only)

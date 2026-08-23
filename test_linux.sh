@@ -114,7 +114,42 @@ echo -n "10. Testing Stock Deletion & Audit Log ... "
 DEL_RESP=$(curl -s -X DELETE "$HOST/api/inventory/$ITEM_ID" -H "Authorization: Bearer $USER_TOKEN")
 echo "$DEL_RESP" | grep -q "deleted successfully" && echo -e "${GREEN}PASSED${NC}" || (echo -e "${RED}FAILED${NC}" && exit 1)
 
+# 11. Microsoft Entra ID Single Sign-On (SSO)
+echo -n "11. Testing Microsoft Entra ID SSO (/api/auth/entra-sso) ... "
+ENTRA_RESP=$(curl -s -X POST "$HOST/api/auth/entra-sso" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"lnx.sso@verdadsolutions.com","name":"Linux SSO Tester","role":"user"}')
+ENTRA_TOKEN=$(echo "$ENTRA_RESP" | grep -o '"token": *"[^"]*"' | sed 's/"token": *"//;s/"//')
+if [ -n "$ENTRA_TOKEN" ]; then
+    echo -e "${GREEN}PASSED (SSO Token obtained)${NC}"
+else
+    echo -e "${RED}FAILED: $ENTRA_RESP${NC}"
+    exit 1
+fi
+
+# 12. Create Support Ticket
+echo -n "12. Testing Support & Requisition Ticket Creation ... "
+TICKET_RESP=$(curl -s -X POST "$HOST/api/tickets" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ENTRA_TOKEN" \
+  -d '{"title":"Linux Workstation Requisition","ticket_type":"STOCK_REQUEST","item_id":1,"quantity_requested":1,"priority":"HIGH","description":"Hardware request via Linux curl test"}')
+TCK_ID=$(echo "$TICKET_RESP" | grep -o '"id": *[0-9]*' | head -1 | sed 's/"id": *//')
+if [ -n "$TCK_ID" ]; then
+    echo -e "${GREEN}PASSED (Ticket ID: $TCK_ID)${NC}"
+else
+    echo -e "${RED}FAILED: $TICKET_RESP${NC}"
+    exit 1
+fi
+
+# 13. Admin Approve & Auto-Deduct Ticket
+echo -n "13. Testing Admin Ticket Approval & Dispatch ... "
+APPROVE_RESP=$(curl -s -X PATCH "$HOST/api/tickets/$TCK_ID/status" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{"status":"APPROVED","admin_notes":"Approved in Linux test suite","deduct_stock":true}')
+echo "$APPROVE_RESP" | grep -q "APPROVED" && echo -e "${GREEN}PASSED${NC}" || (echo -e "${RED}FAILED${NC}" && exit 1)
+
 echo ""
 echo -e "${GREEN}======================================================${NC}"
-echo -e "${GREEN}  🎉 ALL 10 LINUX VERIFICATION TESTS PASSED!          ${NC}"
+echo -e "${GREEN}  🎉 ALL 13 LINUX VERIFICATION TESTS PASSED!          ${NC}"
 echo -e "${GREEN}======================================================${NC}"

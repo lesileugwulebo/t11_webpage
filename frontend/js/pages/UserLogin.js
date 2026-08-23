@@ -88,8 +88,41 @@ function UserLogin({ setView }) {
           </button>
         </form>
 
+        {/* Microsoft Entra ID SSO */}
+        <div style={{ marginTop: '1.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', margin: '1rem 0', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+            <div style={{ flex: 1, height: '1px', background: 'var(--border-subtle)' }} />
+            <span style={{ padding: '0 0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>OR SINGLE SIGN-ON</span>
+            <div style={{ flex: 1, height: '1px', background: 'var(--border-subtle)' }} />
+          </div>
+
+          <button 
+            type="button" 
+            className="btn btn-secondary" 
+            style={{ width: '100%', padding: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.65rem', fontWeight: 600, border: '1px solid #cbd5e1' }}
+            onClick={() => {
+              if (window.entraAuth) {
+                window.entraAuth.loginWithMicrosoftEntra('user', (res) => {
+                  login(res.token, res.user);
+                  addToast(`Welcome, ${res.user.full_name}! (Microsoft Entra SSO)`, 'success');
+                  setView('user-dashboard');
+                }, (err) => {
+                  addToast(err, 'error');
+                });
+              }
+            }}>
+            <svg width="18" height="18" viewBox="0 0 21 21">
+              <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
+              <rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
+              <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
+              <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
+            </svg>
+            Sign in with Microsoft Entra ID
+          </button>
+        </div>
+
         {/* Demo Fast-Fill */}
-        <div style={{ marginTop: '1.5rem', padding: '0.875rem', background: '#f8fafc', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+        <div style={{ marginTop: '1.25rem', padding: '0.875rem', background: '#f8fafc', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.4rem', fontWeight: 700 }}>DEMO CREDENTIALS:</div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <code style={{ fontSize: '0.85rem', color: '#0284c7', fontWeight: 600 }}>user / user123</code>

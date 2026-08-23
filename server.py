@@ -4,6 +4,7 @@ import json
 import sqlite3
 import os
 import re
+import random
 import urllib.parse
 from datetime import datetime, date
 
@@ -118,6 +119,41 @@ def init_db():
         INSERT INTO stock_transactions (item_id, item_name, user_id, user_name, user_role, transaction_type, quantity_change, previous_quantity, new_quantity, reason)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, tx_seed)
+
+    # 4. IT Support & Stock Requisition Tickets Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS tickets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ticket_number TEXT NOT NULL UNIQUE,
+        user_id INTEGER NOT NULL,
+        user_name TEXT NOT NULL,
+        user_email TEXT NOT NULL,
+        title TEXT NOT NULL,
+        ticket_type TEXT NOT NULL DEFAULT 'STOCK_REQUEST',
+        item_id INTEGER,
+        item_name TEXT,
+        quantity_requested INTEGER NOT NULL DEFAULT 0,
+        priority TEXT NOT NULL DEFAULT 'MEDIUM',
+        status TEXT NOT NULL DEFAULT 'PENDING',
+        description TEXT NOT NULL,
+        admin_notes TEXT,
+        resolved_by TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    cursor.execute("SELECT COUNT(*) as count FROM tickets")
+    if cursor.fetchone()['count'] == 0:
+        tickets_seed = [
+            ('TCK-20260823-001', 2, 'Warehouse Operator', 'user@inventory.local', 'Request 1x MacBook Pro 14" M3 for New Engineering Hire', 'STOCK_REQUEST', 1, 'MacBook Pro 14" M3', 1, 'HIGH', 'PENDING', 'Hardware provision needed for incoming senior software engineer joining next Monday.', None, None),
+            ('TCK-20260823-002', 3, 'Sarah Jenkins', 'sarah@inventory.local', 'Report Damaged Office Ergonomic Chair', 'DAMAGE_REPORT', 5, 'Ergonomic Mesh Office Chair', 1, 'MEDIUM', 'APPROVED', 'Hydraulic cylinder leaking oil and failing to hold height adjustment.', 'Replacement chair approved from warehouse storage.', 'System Administrator'),
+            ('TCK-20260823-003', 2, 'Warehouse Operator', 'user@inventory.local', 'Low Stock Alert: Logitech Mechanical Keyboards', 'STOCK_REQUEST', 4, 'Logitech MX Mechanical Keyboard', 10, 'URGENT', 'PENDING', 'Stock level is currently at 3 units, which is below the minimum threshold of 5 units. Reordering needed.', None, None)
+        ]
+        cursor.executemany("""
+        INSERT INTO tickets (ticket_number, user_id, user_name, user_email, title, ticket_type, item_id, item_name, quantity_requested, priority, status, description, admin_notes, resolved_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, tickets_seed)
 
     conn.commit()
     conn.close()
@@ -351,6 +387,73 @@ class InventoryRequestHandler(http.server.SimpleHTTPRequestHandler):
 
             return self.send_json(200, {"total": total, "logs": logs})
 
+        # Ticket Metrics / Stats
+        if path == "/api/tickets/stats":
+            user = self.get_auth_user()
+            if not user:
+                return self.send_json(401, {"error": "Authentication required"})
+            conn = get_db()
+            cursor = conn.cursor()
+            if user['role'] == 'admin':
+                cursor.execute("""
+                    SELECT 
+                        COUNT(*) as total, 
+                        COALESCE(SUM(CASE WHEN status='PENDING' THEN 1 ELSE 0 END), 0) as pending,
+                        COALESCE(SUM(CASE WHEN status='APPROVED' THEN 1 ELSE 0 END), 0) as approved,
+                        COALESCE(SUM(CASE WHEN status='IN_PROGRESS' THEN 1 ELSE 0 END), 0) as in_progress,
+                        COALESCE(SUM(CASE WHEN status='RESOLVED' THEN 1 ELSE 0 END), 0) as resolved,
+                        COALESCE(SUM(CASE WHEN priority='URGENT' AND status='PENDING' THEN 1 ELSE 0 END), 0) as urgent_pending
+                    FROM tickets
+                """)
+            else:
+                cursor.execute("""
+                    SELECT 
+                        COUNT(*) as total, 
+                        COALESCE(SUM(CASE WHEN status='PENDING' THEN 1 ELSE 0 END), 0) as pending,
+                        COALESCE(SUM(CASE WHEN status='APPROVED' THEN 1 ELSE 0 END), 0) as approved,
+                        COALESCE(SUM(CASE WHEN status='IN_PROGRESS' THEN 1 ELSE 0 END), 0) as in_progress,
+                        COALESCE(SUM(CASE WHEN status='RESOLVED' THEN 1 ELSE 0 END), 0) as resolved,
+                        COALESCE(SUM(CASE WHEN priority='URGENT' AND status='PENDING' THEN 1 ELSE 0 END), 0) as urgent_pending
+                    FROM tickets WHERE user_id = ?
+                """, (user['id'],))
+            row = cursor.fetchone()
+            conn.close()
+            return self.send_json(200, {
+                "total": row['total'],
+                "pending": row['pending'],
+                "approved": row['approved'],
+                "inProgress": row['in_progress'],
+                "resolved": row['resolved'],
+                "urgentPending": row['urgent_pending']
+            })
+
+        # Tickets List (User sees own; Admin sees all)
+        if path == "/api/tickets":
+            user = self.get_auth_user()
+            if not user:
+                return self.send_json(401, {"error": "Authentication required"})
+            status_filter = query.get("status", [""])[0]
+            type_filter = query.get("type", [""])[0]
+
+            conn = get_db()
+            cursor = conn.cursor()
+            sql = "SELECT * FROM tickets WHERE 1=1"
+            params = []
+            if user['role'] != 'admin':
+                sql += " AND user_id = ?"
+                params.append(user['id'])
+            if status_filter:
+                sql += " AND status = ?"
+                params.append(status_filter)
+            if type_filter:
+                sql += " AND ticket_type = ?"
+                params.append(type_filter)
+            sql += " ORDER BY created_at DESC"
+            cursor.execute(sql, tuple(params))
+            tickets = [dict(row) for row in cursor.fetchall()]
+            conn.close()
+            return self.send_json(200, {"tickets": tickets})
+
         # Serve Frontend Static Files
         if path == "/" or not os.path.exists(os.path.join(STATIC_DIR, path.lstrip("/"))):
             self.path = "/index.html"
@@ -359,6 +462,59 @@ class InventoryRequestHandler(http.server.SimpleHTTPRequestHandler):
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
+
+        # Entra ID Single Sign-On Endpoint
+        if path == "/api/auth/entra-sso":
+            data = self.read_json_body()
+            email = data.get("email", "").strip().lower()
+            name = data.get("name", "").strip() or email.split("@")[0]
+            role = data.get("role", "user").strip().lower()
+
+            if not email:
+                return self.send_json(400, {"error": "Email is required from Microsoft Entra ID"})
+
+            conn = get_db()
+            cursor = conn.cursor()
+            username = email.split("@")[0]
+            cursor.execute("SELECT id, username, full_name, email, role, status FROM users WHERE email = ? OR username = ?", (email, username))
+            user = cursor.fetchone()
+
+            if not user:
+                # Auto-provision user in database
+                cursor.execute("""
+                    INSERT INTO users (username, password, full_name, email, role, status)
+                    VALUES (?, ?, ?, ?, ?, 'active')
+                """, (username, 'ENTRA_ID_SSO', name, email, role))
+                conn.commit()
+                new_id = cursor.lastrowid
+                user_obj = {
+                    "id": new_id,
+                    "username": username,
+                    "full_name": name,
+                    "email": email,
+                    "role": role,
+                    "status": "active"
+                }
+            else:
+                user_obj = dict(user)
+                if role in ('admin', 'user') and user_obj['role'] != role:
+                    cursor.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_obj['id']))
+                    conn.commit()
+                    user_obj['role'] = role
+
+            conn.close()
+            token = generate_token(user_obj['id'], user_obj['username'], user_obj['role'], user_obj['full_name'])
+            return self.send_json(200, {
+                "message": f"Authenticated via Microsoft Entra ID as {user_obj['full_name']}",
+                "token": token,
+                "user": {
+                    "id": user_obj['id'],
+                    "username": user_obj['username'],
+                    "full_name": user_obj['full_name'],
+                    "email": user_obj['email'],
+                    "role": user_obj['role']
+                }
+            })
 
         # 1. User Login
         if path == "/api/auth/login":
@@ -593,6 +749,74 @@ class InventoryRequestHandler(http.server.SimpleHTTPRequestHandler):
                 }
             })
 
+        # 6. Create Support / Stock Requisition Ticket
+        if path == "/api/tickets":
+            user = self.get_auth_user()
+            if not user:
+                return self.send_json(401, {"error": "Authentication required"})
+
+            data = self.read_json_body()
+            title = data.get("title", "").strip()
+            ticket_type = data.get("ticket_type", "STOCK_REQUEST").strip().upper()
+            item_id = data.get("item_id")
+            item_name = data.get("item_name", "").strip()
+            quantity = int(data.get("quantity_requested", 0) or 0)
+            priority = data.get("priority", "MEDIUM").strip().upper()
+            description = data.get("description", "").strip()
+
+            if not title or not description:
+                return self.send_json(400, {"error": "Title and description are required"})
+
+            valid_types = ('STOCK_REQUEST', 'DAMAGE_REPORT', 'MAINTENANCE', 'GENERAL_SUPPORT')
+            if ticket_type not in valid_types:
+                ticket_type = 'STOCK_REQUEST'
+
+            valid_priorities = ('LOW', 'MEDIUM', 'HIGH', 'URGENT')
+            if priority not in valid_priorities:
+                priority = 'MEDIUM'
+
+            conn = get_db()
+            cursor = conn.cursor()
+
+            # Lookup item name if item_id provided and item_name blank
+            if item_id and not item_name:
+                cursor.execute("SELECT name FROM inventory_items WHERE id = ?", (item_id,))
+                it = cursor.fetchone()
+                if it:
+                    item_name = it['name']
+
+            cursor.execute("SELECT email, full_name FROM users WHERE id = ?", (user['id'],))
+            u_row = cursor.fetchone()
+            user_email = u_row['email'] if u_row else f"{user['username']}@inventory.local"
+            user_name = u_row['full_name'] if u_row else user['full_name']
+
+            ticket_number = f"TCK-{int(datetime.now().timestamp())}-{random.randint(100, 999)}"
+
+            cursor.execute("""
+                INSERT INTO tickets (ticket_number, user_id, user_name, user_email, title, ticket_type, item_id, item_name, quantity_requested, priority, status, description)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?)
+            """, (ticket_number, user['id'], user_name, user_email, title, ticket_type, item_id, item_name, quantity, priority, description))
+            new_ticket_id = cursor.lastrowid
+
+            # Log audit event
+            cursor.execute("""
+                INSERT INTO stock_transactions (item_id, item_name, user_id, user_name, user_role, transaction_type, quantity_change, previous_quantity, new_quantity, reason)
+                VALUES (?, ?, ?, ?, ?, 'UPDATE', 0, 0, 0, ?)
+            """, (item_id or 0, item_name or title, user['id'], user_name, user['role'], f"Raised Ticket {ticket_number}: {title}"))
+
+            conn.commit()
+            conn.close()
+
+            return self.send_json(201, {
+                "message": "Ticket created successfully",
+                "ticket": {
+                    "id": new_ticket_id,
+                    "ticket_number": ticket_number,
+                    "title": title,
+                    "status": "PENDING"
+                }
+            })
+
         return self.send_json(404, {"error": "Endpoint not found"})
 
     def do_PUT(self):
@@ -707,6 +931,59 @@ class InventoryRequestHandler(http.server.SimpleHTTPRequestHandler):
             conn.close()
 
             return self.send_json(200, {"message": f"User status set to {status}"})
+
+        # Update Ticket Status: /api/tickets/<id>/status (Admin Only)
+        ticket_match = re.match(r"^/api/tickets/(\d+)/status$", path)
+        if ticket_match:
+            user = self.get_auth_user()
+            if not user or user.get("role") != "admin":
+                return self.send_json(403, {"error": "Administrator privilege required to update ticket status"})
+
+            ticket_id = int(ticket_match.group(1))
+            data = self.read_json_body()
+            new_status = data.get("status", "").strip().upper()
+            admin_notes = data.get("admin_notes", "").strip()
+            deduct_stock = data.get("deduct_stock", False)
+
+            valid_statuses = ('PENDING', 'APPROVED', 'IN_PROGRESS', 'RESOLVED', 'REJECTED')
+            if new_status not in valid_statuses:
+                return self.send_json(400, {"error": f"Invalid status. Must be one of: {', '.join(valid_statuses)}"})
+
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM tickets WHERE id = ?", (ticket_id,))
+            ticket = cursor.fetchone()
+            if not ticket:
+                conn.close()
+                return self.send_json(404, {"error": "Ticket not found"})
+
+            # If APPROVED and deduct_stock requested & item_id present
+            if (new_status == "APPROVED" or deduct_stock) and ticket['item_id'] and ticket['quantity_requested'] > 0:
+                cursor.execute("SELECT quantity, name FROM inventory_items WHERE id = ?", (ticket['item_id'],))
+                item = cursor.fetchone()
+                if item:
+                    old_qty = item['quantity']
+                    needed = ticket['quantity_requested']
+                    new_qty = max(0, old_qty - needed)
+                    cursor.execute("UPDATE inventory_items SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (new_qty, ticket['item_id']))
+                    cursor.execute("""
+                        INSERT INTO stock_transactions (item_id, item_name, user_id, user_name, user_role, transaction_type, quantity_change, previous_quantity, new_quantity, reason)
+                        VALUES (?, ?, ?, ?, ?, 'ADJUSTMENT', ?, ?, ?, ?)
+                    """, (ticket['item_id'], item['name'], user['id'], user.get('full_name', user['username']), user['role'], -needed, old_qty, new_qty, f"Dispatched for approved ticket {ticket['ticket_number']}"))
+
+            cursor.execute("""
+                UPDATE tickets 
+                SET status = ?, admin_notes = ?, resolved_by = ?, updated_at = CURRENT_TIMESTAMP 
+                WHERE id = ?
+            """, (new_status, admin_notes or ticket['admin_notes'], user.get('full_name', user['username']), ticket_id))
+
+            conn.commit()
+            conn.close()
+
+            return self.send_json(200, {
+                "message": f"Ticket {ticket['ticket_number']} updated to {new_status}",
+                "status": new_status
+            })
 
         return self.send_json(404, {"error": "Endpoint not found"})
 

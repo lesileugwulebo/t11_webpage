@@ -485,7 +485,284 @@ function CreateUserModal({ isOpen, onClose, onSuccess }) {
   );
 }
 
+// 5. Create Support / Stock Request Ticket Modal
+function CreateTicketModal({ isOpen, onClose, items = [], onSuccess }) {
+  const [formData, setFormData] = React.useState({
+    title: '',
+    ticket_type: 'STOCK_REQUEST',
+    item_id: '',
+    quantity_requested: 1,
+    priority: 'MEDIUM',
+    description: ''
+  });
+  const [loading, setLoading] = React.useState(false);
+  const { addToast } = window.useToast();
+
+  if (!isOpen) return null;
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleItemSelect = (e) => {
+    const itemId = e.target.value;
+    const selected = items.find(i => String(i.id) === String(itemId));
+    setFormData(prev => ({
+      ...prev,
+      item_id: itemId,
+      title: selected ? `Stock Requisition: ${selected.name} (${selected.sku})` : prev.title
+    }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!formData.title || !formData.description) {
+      addToast('Please provide a title and detailed description', 'error');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const selected = items.find(i => String(i.id) === String(formData.item_id));
+      await window.api.createTicket({
+        title: formData.title,
+        ticket_type: formData.ticket_type,
+        item_id: formData.item_id ? parseInt(formData.item_id) : null,
+        item_name: selected ? selected.name : null,
+        quantity_requested: parseInt(formData.quantity_requested) || 0,
+        priority: formData.priority,
+        description: formData.description
+      });
+      addToast('Support ticket / stock request submitted successfully!', 'success');
+      onSuccess();
+      onClose();
+    } catch (err) {
+      addToast(err.message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 className="modal-title">🎫 Submit Stock Request / Support Ticket</h3>
+          <button className="modal-close-btn" onClick={onClose}>&times;</button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body">
+            <div className="grid-2">
+              <div className="form-group">
+                <label className="form-label">Ticket Type *</label>
+                <select name="ticket_type" className="form-control" value={formData.ticket_type} onChange={handleChange} required>
+                  <option value="STOCK_REQUEST">📦 Stock Requisition / Hardware Request</option>
+                  <option value="DAMAGE_REPORT">⚠️ Report Damaged Equipment</option>
+                  <option value="MAINTENANCE">🔧 IT Maintenance / Repair</option>
+                  <option value="GENERAL_SUPPORT">💬 General IT / Inventory Support</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Priority Level</label>
+                <select name="priority" className="form-control" value={formData.priority} onChange={handleChange}>
+                  <option value="LOW">🟢 Low</option>
+                  <option value="MEDIUM">🔵 Medium</option>
+                  <option value="HIGH">🟠 High</option>
+                  <option value="URGENT">🔴 Urgent (Immediate Action)</option>
+                </select>
+              </div>
+            </div>
+
+            {formData.ticket_type === 'STOCK_REQUEST' && (
+              <div className="grid-2">
+                <div className="form-group">
+                  <label className="form-label">Select Catalog Product (Optional)</label>
+                  <select name="item_id" className="form-control" value={formData.item_id} onChange={handleItemSelect}>
+                    <option value="">-- Choose an item to request --</option>
+                    {items.map(i => (
+                      <option key={i.id} value={i.id}>
+                        {i.name} ({i.sku}) - {i.quantity} in stock
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Quantity Needed</label>
+                  <input 
+                    type="number" 
+                    name="quantity_requested" 
+                    className="form-control" 
+                    min="1" 
+                    value={formData.quantity_requested} 
+                    onChange={handleChange} 
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="form-group">
+              <label className="form-label">Subject / Ticket Title *</label>
+              <input 
+                type="text" 
+                name="title" 
+                className="form-control" 
+                placeholder="e.g. Request new monitor for workstation setup" 
+                value={formData.title} 
+                onChange={handleChange} 
+                required 
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Detailed Request Notes / Justification *</label>
+              <textarea 
+                name="description" 
+                className="form-control" 
+                rows="3" 
+                placeholder="Explain what is needed, which department or user it is for, and any relevant deadlines..." 
+                value={formData.description} 
+                onChange={handleChange} 
+                required 
+              />
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={loading}>
+              {loading ? 'Submitting...' : 'Submit Ticket'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// 6. Admin Ticket Status / Approval Modal
+function TicketDetailsModal({ isOpen, onClose, ticket, onStatusUpdate }) {
+  const [status, setStatus] = React.useState('APPROVED');
+  const [adminNotes, setAdminNotes] = React.useState('');
+  const [deductStock, setDeductStock] = React.useState(true);
+  const [loading, setLoading] = React.useState(false);
+  const { addToast } = window.useToast();
+
+  React.useEffect(() => {
+    if (ticket) {
+      setStatus(ticket.status === 'PENDING' ? 'APPROVED' : ticket.status);
+      setAdminNotes(ticket.admin_notes || '');
+    }
+  }, [ticket]);
+
+  if (!isOpen || !ticket) return null;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await window.api.updateTicketStatus(ticket.id, {
+        status,
+        admin_notes: adminNotes,
+        deduct_stock: status === 'APPROVED' && deductStock
+      });
+      addToast(`Ticket ${ticket.ticket_number} marked as ${status}`, 'success');
+      if (onStatusUpdate) onStatusUpdate();
+      onClose();
+    } catch (err) {
+      addToast(err.message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 className="modal-title">🎫 Manage Ticket: {ticket.ticket_number}</h3>
+          <button className="modal-close-btn" onClick={onClose}>&times;</button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body">
+            <div style={{ marginBottom: '1rem', padding: '0.875rem', background: '#f8fafc', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.05rem' }}>{ticket.title}</span>
+                <span className={`badge ${ticket.status === 'APPROVED' ? 'badge-success' : ticket.status === 'PENDING' ? 'badge-warning' : 'badge-neutral'}`}>
+                  {ticket.status}
+                </span>
+              </div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Requested by: <strong>{ticket.user_name}</strong> ({ticket.user_email}) • Priority: <strong style={{ color: ticket.priority === 'URGENT' ? '#dc2626' : '#2563eb' }}>{ticket.priority}</strong>
+              </div>
+              {ticket.item_name && (
+                <div style={{ fontSize: '0.8rem', color: '#0284c7', marginTop: '0.25rem', fontWeight: 600 }}>
+                  Item: {ticket.item_name} ({ticket.quantity_requested} units requested)
+                </div>
+              )}
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Request Description</label>
+              <div style={{ padding: '0.75rem', background: '#f1f5f9', borderRadius: '4px', fontSize: '0.85rem', color: '#334155', lineHeight: 1.5 }}>
+                {ticket.description}
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Update Status</label>
+              <select className="form-control" value={status} onChange={(e) => setStatus(e.target.value)}>
+                <option value="APPROVED">✅ Approve Request</option>
+                <option value="IN_PROGRESS">⚙️ In Progress / Processing</option>
+                <option value="RESOLVED">🎉 Mark as Resolved</option>
+                <option value="REJECTED">❌ Reject Request</option>
+                <option value="PENDING">⏳ Keep Pending</option>
+              </select>
+            </div>
+
+            {status === 'APPROVED' && ticket.item_id && ticket.quantity_requested > 0 && (
+              <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 'var(--radius-sm)' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.85rem', color: '#065f46', fontWeight: 600 }}>
+                  <input 
+                    type="checkbox" 
+                    checked={deductStock} 
+                    onChange={(e) => setDeductStock(e.target.checked)} 
+                  />
+                  Automatically deduct {ticket.quantity_requested} units of {ticket.item_name} from inventory stock upon approval
+                </label>
+              </div>
+            )}
+
+            <div className="form-group">
+              <label className="form-label">Admin Notes / Resolution Remarks</label>
+              <textarea 
+                className="form-control" 
+                rows="2" 
+                placeholder="Notes for the user or fulfillment details..." 
+                value={adminNotes} 
+                onChange={(e) => setAdminNotes(e.target.value)} 
+              />
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn btn-admin" disabled={loading}>
+              {loading ? 'Saving...' : 'Update Ticket'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 window.RestockModal = RestockModal;
 window.AdjustStockModal = AdjustStockModal;
 window.CreateItemModal = CreateItemModal;
 window.CreateUserModal = CreateUserModal;
+window.CreateTicketModal = CreateTicketModal;
+window.TicketDetailsModal = TicketDetailsModal;

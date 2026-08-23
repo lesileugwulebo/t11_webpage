@@ -84,9 +84,41 @@ ON DUPLICATE KEY UPDATE `sku`=`sku`;
 
 INSERT INTO `stock_transactions` (`item_id`, `item_name`, `user_id`, `user_name`, `user_role`, `transaction_type`, `quantity_change`, `previous_quantity`, `new_quantity`, `reason`, `created_at`)
 VALUES
-(1, 'MacBook Pro 14" M3', 1, 'System Administrator', 'admin', 'CREATE', 24, 0, 24, 'Initial stock setup', NOW()),
-(2, 'Dell UltraSharp 27" 4K Monitor', 1, 'System Administrator', 'admin', 'CREATE', 18, 0, 18, 'Initial stock setup', NOW()),
-(3, 'Logitech MX Master 3S', 1, 'System Administrator', 'admin', 'CREATE', 45, 0, 45, 'Initial stock setup', NOW()),
-(4, 'Logitech MX Mechanical Keyboard', 2, 'Warehouse Operator', 'user', 'RESTOCK', 10, 0, 10, 'Supplier delivery received', NOW()),
-(4, 'Logitech MX Mechanical Keyboard', 2, 'Warehouse Operator', 'user', 'ADJUSTMENT', -7, 10, 3, 'Dispatched for new hires', NOW()),
-(7, 'Premium Hardcover Notebook A5', 2, 'Warehouse Operator', 'user', 'CREATE', 150, 0, 150, 'Stationery restock', NOW());
+(1, 'MacBook Pro 14" M3', 1, 'System Administrator', 'admin', 'CREATE', 24, 0, 24, 'Initial stock import from inventory baseline', NOW() - INTERVAL 4 HOUR),
+(2, 'Dell UltraSharp 27" 4K Monitor', 1, 'System Administrator', 'admin', 'CREATE', 18, 0, 18, 'Initial stock import from inventory baseline', NOW() - INTERVAL 4 HOUR),
+(3, 'Logitech MX Master 3S', 2, 'Warehouse Operator', 'user', 'RESTOCK', 15, 30, 45, 'PO-2026-891 Supplier shipment received', NOW() - INTERVAL 2 HOUR),
+(4, 'Logitech MX Mechanical Keyboard', 2, 'Warehouse Operator', 'user', 'ADJUSTMENT', -2, 5, 3, 'Dispatched 2 units to engineering workstation deployment', NOW() - INTERVAL 1 HOUR);
+
+-- -----------------------------------------------------------------------------
+-- 4. IT Support & Stock Requisition Tickets Table
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `tickets` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `ticket_number` VARCHAR(50) NOT NULL UNIQUE,
+  `user_id` INT NOT NULL,
+  `user_name` VARCHAR(100) NOT NULL,
+  `user_email` VARCHAR(100) NOT NULL,
+  `title` VARCHAR(255) NOT NULL,
+  `ticket_type` ENUM('STOCK_REQUEST', 'DAMAGE_REPORT', 'MAINTENANCE', 'GENERAL_SUPPORT') NOT NULL DEFAULT 'STOCK_REQUEST',
+  `item_id` INT NULL,
+  `item_name` VARCHAR(255) NULL,
+  `quantity_requested` INT NOT NULL DEFAULT 0,
+  `priority` ENUM('LOW', 'MEDIUM', 'HIGH', 'URGENT') NOT NULL DEFAULT 'MEDIUM',
+  `status` ENUM('PENDING', 'APPROVED', 'IN_PROGRESS', 'RESOLVED', 'REJECTED') NOT NULL DEFAULT 'PENDING',
+  `description` TEXT NOT NULL,
+  `admin_notes` TEXT NULL,
+  `resolved_by` VARCHAR(100) NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_ticket_user` (`user_id`),
+  INDEX `idx_ticket_status` (`status`),
+  INDEX `idx_ticket_type` (`ticket_type`),
+  CONSTRAINT `fk_tickets_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO `tickets` (`id`, `ticket_number`, `user_id`, `user_name`, `user_email`, `title`, `ticket_type`, `item_id`, `item_name`, `quantity_requested`, `priority`, `status`, `description`, `admin_notes`, `resolved_by`, `created_at`)
+VALUES
+(1, 'TCK-20260823-001', 2, 'Warehouse Operator', 'user@inventory.local', 'Request 1x MacBook Pro 14" M3 for New Engineering Hire', 'STOCK_REQUEST', 1, 'MacBook Pro 14" M3', 1, 'HIGH', 'PENDING', 'Hardware provision needed for incoming senior software engineer joining next Monday.', NULL, NULL, NOW() - INTERVAL 3 HOUR),
+(2, 'TCK-20260823-002', 3, 'Sarah Jenkins', 'sarah@inventory.local', 'Report Damaged Office Ergonomic Chair', 'DAMAGE_REPORT', 5, 'Ergonomic Mesh Office Chair', 1, 'MEDIUM', 'APPROVED', 'Hydraulic cylinder leaking oil and failing to hold height adjustment.', 'Replacement chair approved from warehouse storage.', 'System Administrator', NOW() - INTERVAL 1 DAY),
+(3, 'TCK-20260823-003', 2, 'Warehouse Operator', 'user@inventory.local', 'Low Stock Alert: Logitech Mechanical Keyboards', 'STOCK_REQUEST', 4, 'Logitech MX Mechanical Keyboard', 10, 'URGENT', 'PENDING', 'Stock level is currently at 3 units, which is below the minimum threshold of 5 units. Reordering needed.', NULL, NULL, NOW() - INTERVAL 30 MINUTE)
+ON DUPLICATE KEY UPDATE `ticket_number`=`ticket_number`;

@@ -100,7 +100,55 @@ def run_tests():
     assert status == 200, f"Delete failed: {res}"
     print("Delete Item OK:", res["message"])
 
-    print("\nALL 9 INTEGRATION TESTS PASSED SUCCESSFULLY! 🌟")
+    # 10. Microsoft Entra ID Single Sign-On (SSO)
+    print("\n--- 10. Microsoft Entra ID SSO Authentication ---")
+    entra_payload = {
+        "email": "alex.morgan@verdadsolutions.com",
+        "name": "Alex Morgan",
+        "role": "user"
+    }
+    status, res = api_call("/auth/entra-sso", method="POST", data=entra_payload)
+    assert status == 200, f"Entra ID SSO failed: {res}"
+    entra_token = res["token"]
+    print(f"Entra ID SSO OK: {res['message']} (User: {res['user']['username']})")
+
+    # 11. Create Support / Stock Request Ticket
+    print("\n--- 11. Create Stock Requisition Ticket ---")
+    ticket_payload = {
+        "title": "Automated Test Hardware Requisition",
+        "ticket_type": "STOCK_REQUEST",
+        "item_id": 1,
+        "quantity_requested": 1,
+        "priority": "HIGH",
+        "description": "Auto test equipment requisition"
+    }
+    status, res = api_call("/tickets", method="POST", data=ticket_payload, token=entra_token)
+    assert status == 201, f"Ticket creation failed: {res}"
+    ticket_id = res["ticket"]["id"]
+    print(f"Ticket Created OK: #{ticket_id} ({res['ticket']['ticket_number']}) - Status: {res['ticket']['status']}")
+
+    # 12. Admin Ticket Stats & List
+    print("\n--- 12. Admin Ticket Stats & Queue ---")
+    status, res = api_call("/tickets/stats", token=admin_token)
+    assert status == 200, f"Ticket stats failed: {res}"
+    print("Ticket Stats OK:", res)
+
+    status, res = api_call("/tickets", token=admin_token)
+    assert status == 200, f"Ticket list failed: {res}"
+    assert len(res["tickets"]) > 0, "No tickets returned"
+    print(f"Ticket List OK: Found {len(res['tickets'])} tickets in queue")
+
+    # 13. Admin Approve & Auto-Deduct Ticket
+    print("\n--- 13. Admin Approve Ticket with Stock Deduction ---")
+    status, res = api_call(f"/tickets/{ticket_id}/status", method="PATCH", data={
+        "status": "APPROVED",
+        "admin_notes": "Approved in automated test suite",
+        "deduct_stock": True
+    }, token=admin_token)
+    assert status == 200, f"Ticket approval failed: {res}"
+    print("Ticket Status Update OK:", res["message"])
+
+    print("\nALL 13 INTEGRATION TESTS PASSED SUCCESSFULLY! 🌟")
 
 if __name__ == "__main__":
     run_tests()
