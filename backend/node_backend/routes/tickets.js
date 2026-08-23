@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../config/db');
+const { pool: db } = require('../config/db');
 const { requireAuth, requireAdmin } = require('./auth');
 
 // GET /api/tickets/stats
